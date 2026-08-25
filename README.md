@@ -5,10 +5,24 @@
 **核心功能：**
 - ⚖️ 天平推演：DeepSeek 多重人格（理性天使/毒舌恶魔/赛博预言家）博弈 + 量化砝码 + 神圣裁决令
 - 🧠 **用户画像个性化决策**：填写性格、工作、学习、生活与当下状态等基本场景，每次推演时作为参数录入，LLM 结合画像给出量身定制的决策依据（仅存于浏览器 localStorage）
-- 💰 **免费额度 + BYOK**：每个匿名用户默认免费 3 次（`FREE_QUOTA_LIMIT` 可调）；用户可接入自己的 DeepSeek API Key，之后调用走用户自己的账户计费、不受额度限制（Key 仅存本机，不落服务器）
+- 💰 **免费额度 + BYOK + 充值**：每个匿名用户默认免费 3 次（`FREE_QUOTA_LIMIT` 可调）；用户可接入自己的 DeepSeek API Key（走用户自己的账户计费）；也可通过收款码小额充值，站长人工确认后发放付费次数（付费余额优先扣减）
 - 🪙 命运硬币 / 🎡 赛博轮盘 / 🗄️ 决策档案馆 / 🎴 社交裁决卡片一键导出
 
 **LLM 后端：DeepSeek（OpenAI 兼容 API）**，默认模型 `deepseek-chat`（DeepSeek-V3），可选 `deepseek-reasoner`（DeepSeek-R1）。
+
+## 站长运营说明（收款码 + 人工确认）
+
+1. 把你的微信/支付宝收款码图片命名为 `qr-pay.png` 放到 `public/` 目录（构建后即部署到站点根路径 `/qr-pay.png`，前端充值弹窗会自动展示）
+2. 配置环境变量 `ADMIN_SECRET`（强随机串）
+3. 用户付款后，把用户提供的「用户 ID」填入以下接口发放次数（1 次推演 = 1 余额）：
+
+```bash
+curl -X POST https://你的域名/api/admin/add-credits \
+  -H 'Content-Type: application/json' \
+  -d '{"userId":"u_xxx","amount":50,"secret":"你的ADMIN_SECRET"}'
+```
+
+> 计费顺序：付费余额 → 免费额度；余额不足时自动回落到免费额度。额度/余额为内存存储，服务重启清零（生产可升级 Cloudflare KV / 数据库持久化）。
 
 ## 本地运行
 

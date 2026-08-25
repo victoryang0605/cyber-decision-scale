@@ -1,11 +1,23 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { KeyRound, X, Save, Trash2, Gauge, Coins, ShieldCheck, Check } from 'lucide-react';
+import {
+  KeyRound,
+  X,
+  Save,
+  Trash2,
+  Gauge,
+  Coins,
+  ShieldCheck,
+  Check,
+  Copy,
+  QrCode,
+} from 'lucide-react';
 import { QuotaInfo } from '../types';
 
 interface QuotaModalProps {
   quota: QuotaInfo | null;
   userKey: string;
+  userId: string;
   exceeded?: boolean;
   onSaveKey: (key: string) => void;
   onClearKey: () => void;
@@ -15,6 +27,7 @@ interface QuotaModalProps {
 export const QuotaModal: React.FC<QuotaModalProps> = ({
   quota,
   userKey,
+  userId,
   exceeded,
   onSaveKey,
   onClearKey,
@@ -22,13 +35,26 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
 }) => {
   const [keyInput, setKeyInput] = useState(userKey);
   const [savedTip, setSavedTip] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [qrOk, setQrOk] = useState(true);
 
   const remaining = quota ? quota.remaining : undefined;
+  const credits = quota ? quota.credits ?? 0 : 0;
 
   const handleSaveKey = () => {
     onSaveKey(keyInput.trim());
     setSavedTip(true);
     setTimeout(() => setSavedTip(false), 1800);
+  };
+
+  const handleCopyUid = () => {
+    navigator.clipboard
+      .writeText(userId)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => {});
   };
 
   return (
@@ -47,7 +73,7 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-100">我的额度与付费方式</h3>
-              <p className="text-xs text-slate-400">免费额度用完？接入自己的 Key 继续使用</p>
+              <p className="text-xs text-slate-400">免费额度用完？接入自己的 Key 或充值继续</p>
             </div>
           </div>
           <button
@@ -64,7 +90,7 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
           </div>
         )}
 
-        {/* Free quota */}
+        {/* Free quota + paid credits */}
         <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-300 font-semibold flex items-center gap-1.5">
@@ -84,12 +110,63 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
                 className={`h-full rounded-full transition-all ${
                   remaining > 0 ? 'bg-gradient-to-r from-amber-400 to-orange-500' : 'bg-rose-500'
                 }`}
-                style={{ width: `${Math.min(100, ((quota?.limit || 1) - remaining) / (quota?.limit || 1) * 100)}%` }}
+                style={{
+                  width: `${Math.min(100, (((quota?.limit || 1) - remaining) / (quota?.limit || 1)) * 100)}%`,
+                }}
               />
             </div>
           )}
+          {credits > 0 && (
+            <div className="text-xs text-emerald-300 font-semibold flex items-center gap-1.5">
+              <Coins className="w-4 h-4 text-emerald-400" /> 付费余额：{credits} 次（优先消耗）
+            </div>
+          )}
           <p className="text-[11px] text-slate-500">
-            每次成功的天平推演消耗 1 次免费额度；接入自己的 Key 后不再消耗。
+            每次成功的天平推演消耗 1 次：有付费余额先扣余额，否则扣免费额度；接入自己的 Key 后不再消耗。
+          </p>
+        </div>
+
+        {/* Recharge: QR + manual confirmation */}
+        <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/20 space-y-3">
+          <div className="text-xs font-semibold text-amber-200 flex items-center gap-1.5">
+            <QrCode className="w-4 h-4 text-amber-400" /> 充值解锁更多次数
+          </div>
+          <div className="flex gap-3 items-center">
+            {qrOk ? (
+              <img
+                src="/qr-pay.png"
+                alt="收款码"
+                onError={() => setQrOk(false)}
+                className="w-24 h-24 rounded-xl border border-amber-500/30 bg-white object-contain shrink-0"
+              />
+            ) : (
+              <div className="w-24 h-24 rounded-xl border-2 border-dashed border-amber-500/40 flex items-center justify-center text-[10px] text-amber-200/70 text-center px-1 shrink-0">
+                收款码<br />占位
+              </div>
+            )}
+            <div className="text-[11px] text-slate-400 space-y-1.5">
+              <p>
+                1. 扫码支付（微信/支付宝均可），金额随意，建议 <b className="text-amber-300">¥10 = 50 次</b>
+              </p>
+              <p>2. 复制下方「我的用户 ID」发给站长（或付款备注里填写）</p>
+              <p>3. 站长确认收款后为你发放次数，立即到账</p>
+            </div>
+          </div>
+
+          {/* User ID */}
+          <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+            <span className="text-[11px] text-slate-500 shrink-0">我的用户 ID：</span>
+            <code className="flex-1 truncate font-mono text-[11px] text-cyan-300">{userId}</code>
+            <button
+              onClick={handleCopyUid}
+              className="shrink-0 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium flex items-center gap-1 transition-colors"
+            >
+              {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              {copied ? '已复制' : '复制'}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-600">
+            找不到收款码？说明站长还没上传收款码图片（应位于站点 /qr-pay.png），可直接联系站长线下转账。
           </p>
         </div>
 
@@ -100,7 +177,7 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
             填入你自己的 Key 后，AI 调用将<b className="text-cyan-300">使用你的 DeepSeek 账户计费</b>
-            ，不再消耗免费额度，也不受次数限制。Key 仅保存在你本机浏览器，只用于本次请求，不会存储到服务器。
+            ，不再消耗任何额度。Key 仅保存在你本机浏览器，只用于本次请求，不会存储到服务器。
           </p>
           <div className="flex gap-2">
             <input
@@ -122,7 +199,7 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
           {userKey && (
             <div className="flex items-center justify-between text-[11px] text-emerald-300">
               <span className="flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5" /> 已接入个人 Key，当前不消耗免费额度
+                <ShieldCheck className="w-3.5 h-3.5" /> 已接入个人 Key，当前不消耗任何额度
               </span>
               <button
                 onClick={() => {
@@ -135,16 +212,6 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
               </button>
             </div>
           )}
-        </div>
-
-        {/* Recharge placeholder (next step) */}
-        <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/20 space-y-1.5">
-          <div className="text-xs font-semibold text-amber-200 flex items-center gap-1.5">
-            <Coins className="w-4 h-4 text-amber-400" /> 充值解锁更多次数（即将上线）
-          </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            后续将支持小额充值，购买次数包后按次扣费，所有调用仍走站长 DeepSeek 账户。充值渠道待接入。
-          </p>
         </div>
 
         {/* Footer */}

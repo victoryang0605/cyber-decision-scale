@@ -386,12 +386,15 @@ export default function App() {
                   </span>
                 ) : quota ? (
                   <span className="text-slate-400">
+                    {!!quota.credits && quota.credits > 0 && (
+                      <span className="text-emerald-300 font-bold mr-2">付费余额 {quota.credits} 次</span>
+                    )}
                     免费额度：
                     <span className={`font-bold ${quota.remaining > 0 ? 'text-amber-300' : 'text-rose-400'}`}>
                       {quota.remaining}
                     </span>
                     {' '}/ {quota.limit} 次剩余
-                    {quota.remaining === 0 && <span className="text-rose-400">（已用完）</span>}
+                    {quota.remaining === 0 && !quota.credits && <span className="text-rose-400">（已用完）</span>}
                   </span>
                 ) : (
                   <span className="text-slate-500">每次成功推演消耗 1 次免费额度</span>
@@ -686,6 +689,7 @@ export default function App() {
         <QuotaModal
           quota={quota}
           userKey={userKey}
+          userId={getOrCreateUid()}
           exceeded={quotaExceeded}
           onSaveKey={handleSaveUserKey}
           onClearKey={handleClearUserKey}

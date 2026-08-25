@@ -14,6 +14,7 @@ import {
   generateFallbackDecision,
   DecisionInput,
   MemoryQuotaStore,
+  MemoryCreditStore,
   resolveFreeLimit,
 } from '../../../src/decisionEngine';
 
@@ -33,6 +34,7 @@ function json(data: unknown, status = 200): Response {
 
 // 模块级单例（同一 isolate 内跨请求复用）
 let quotaStore: MemoryQuotaStore | null = null;
+let creditStore: MemoryCreditStore | null = null;
 
 export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
   try {
@@ -55,8 +57,11 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
     if (!quotaStore) {
       quotaStore = new MemoryQuotaStore(resolveFreeLimit(env.FREE_QUOTA_LIMIT));
     }
+    if (!creditStore) {
+      creditStore = new MemoryCreditStore();
+    }
 
-    // BYOK：用户自带 Key 时费用走用户自己的 DeepSeek 账户，不消耗免费额度
+    // BYOK：用户自带 Key 时费用走用户自己的 DeepSeek 账户，不消耗任何额度
     const userKeyTrimmed = typeof userKey === 'string' ? userKey.trim() : '';
     const usingOwnerKey = !userKeyTrimmed;
     const apiKey = (userKeyTrimmed || env.DEEPSEEK_API_KEY) || undefined;
@@ -68,13 +73,13 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
 
     const uid = typeof userId === 'string' && userId.trim() ? userId.trim() : 'anonymous';
 
-    // 使用站长 Key 时检查免费额度；超出则返回 403 + 额度信息
-    if (usingOwnerKey && !quotaStore.canUse(uid)) {
+    // 使用站长 Key 时：付费余额优先，余额为 0 才走免费额度
+    if (usingOwnerKey && creditStore.balance(uid) <= 0 && !quotaStore.canUse(uid)) {
       return json(
         {
           error: '免费次数已用完',
           code: 'FREE_LIMIT_EXCEEDED',
-          quota: quotaStore.status(uid),
+          quota: { ...quotaStore.status(uid), credits: 0 },
         },
         403,
       );
@@ -86,11 +91,16 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
         baseURL: env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
         model: env.DEEPSEEK_MODEL || 'deepseek-chat',
       });
-      // 只有真正调用了 LLM（产生费用）才消耗免费额度
+      // 只有真正调用了 LLM（产生费用）才扣减额度：付费余额优先，其次免费额度
       if (usingOwnerKey) {
-        quotaStore.consume(uid);
+        if (!creditStore.consume(uid)) {
+          quotaStore.consume(uid);
+        }
       }
-      return json({ ...data, quota: quotaStore.status(uid) });
+      return json({
+        ...data,
+        quota: { ...quotaStore.status(uid), credits: creditStore.balance(uid) },
+      });
     } catch (err) {
       console.error('DeepSeek API execution error:', err);
       return json(generateFallbackDecision(input));

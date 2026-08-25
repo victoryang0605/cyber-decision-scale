@@ -223,6 +223,8 @@ export interface QuotaInfo {
   used: number;
   limit: number;
   remaining: number;
+  /** 付费余额（购买/人工发放的次数），有余额时优先消耗 */
+  credits?: number;
 }
 
 /** 简单的按用户内存计数额度存储 */
@@ -260,4 +262,30 @@ export class MemoryQuotaStore {
 export function resolveFreeLimit(value?: string | number): number {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+}
+
+/** 付费余额（次数）存储：人工确认收款后由管理员发放；有余额时优先消耗，不占免费额度 */
+export class MemoryCreditStore {
+  private credits = new Map<string, number>();
+
+  /** 当前余额（次数） */
+  balance(userId: string): number {
+    return this.credits.get(userId) || 0;
+  }
+
+  /** 发放余额（管理员操作），返回最新余额 */
+  add(userId: string, amount: number): number {
+    const amt = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
+    const next = (this.credits.get(userId) || 0) + amt;
+    this.credits.set(userId, next);
+    return next;
+  }
+
+  /** 消耗 1 次余额；余额不足返回 false */
+  consume(userId: string): boolean {
+    const cur = this.credits.get(userId) || 0;
+    if (cur <= 0) return false;
+    this.credits.set(userId, cur - 1);
+    return true;
+  }
 }
