@@ -11,16 +11,22 @@ import {
   Check,
   Copy,
   QrCode,
+  Smartphone,
+  LogOut,
+  UserX,
 } from 'lucide-react';
-import { QuotaInfo } from '../types';
+import { QuotaInfo, SessionUser } from '../types';
 
 interface QuotaModalProps {
   quota: QuotaInfo | null;
   userKey: string;
   userId: string;
+  session?: SessionUser | null;
   exceeded?: boolean;
   onSaveKey: (key: string) => void;
   onClearKey: () => void;
+  onSavePhone?: (phone: string) => Promise<boolean>;
+  onDeleteAccount?: () => Promise<boolean>;
   onClose: () => void;
 }
 
@@ -28,18 +34,28 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
   quota,
   userKey,
   userId,
+  session,
   exceeded,
   onSaveKey,
   onClearKey,
+  onSavePhone,
+  onDeleteAccount,
   onClose,
 }) => {
   const [keyInput, setKeyInput] = useState(userKey);
   const [savedTip, setSavedTip] = useState(false);
   const [copied, setCopied] = useState(false);
   const [qrOk, setQrOk] = useState(true);
+  const [phoneInput, setPhoneInput] = useState(session?.phone || '');
+  const [phoneMsg, setPhoneMsg] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
-  const remaining = quota ? quota.remaining : undefined;
-  const credits = quota ? quota.credits ?? 0 : 0;
+  const remaining = session
+    ? Math.max(0, session.freeLimit - session.freeUsed)
+    : quota
+      ? quota.remaining
+      : undefined;
+  const credits = session ? session.balance : quota ? quota.credits ?? 0 : 0;
 
   const handleSaveKey = () => {
     onSaveKey(keyInput.trim());
@@ -55,6 +71,25 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
         setTimeout(() => setCopied(false), 1800);
       })
       .catch(() => {});
+  };
+
+  const handleSavePhone = async () => {
+    if (!onSavePhone || !/^1\d{10}$/.test(phoneInput)) {
+      setPhoneMsg('请输入 11 位手机号');
+      return;
+    }
+    const ok = await onSavePhone(phoneInput);
+    setPhoneMsg(ok ? '手机号已保存 ✓' : '保存失败，请稍后再试');
+    setTimeout(() => setPhoneMsg(''), 2000);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!onDeleteAccount) return;
+    if (!window.confirm('确定注销账号吗？你的昵称、手机号、余额与充值记录将从服务器删除，且不可恢复。')) return;
+    setDeleting(true);
+    const ok = await onDeleteAccount();
+    setDeleting(false);
+    if (ok) onClose();
   };
 
   return (
@@ -170,6 +205,32 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
           </p>
         </div>
 
+        {/* 手机号绑定（微信登录用户） */}
+        {session && (
+          <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+            <div className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+              <Smartphone className="w-4 h-4 text-slate-400" /> 手机号
+              {!session.phone && <span className="text-[10px] text-amber-300 font-normal">（建议绑定，便于充值对账）</span>}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
+                placeholder="11 位手机号"
+                className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 focus:border-cyan-500 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none font-mono"
+              />
+              <button
+                onClick={handleSavePhone}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-colors"
+              >
+                保存
+              </button>
+            </div>
+            {phoneMsg && <p className="text-[11px] text-cyan-300">{phoneMsg}</p>}
+          </div>
+        )}
+
         {/* BYOK */}
         <div className="p-4 rounded-2xl bg-cyan-950/30 border border-cyan-500/30 space-y-2.5">
           <div className="text-xs font-semibold text-cyan-200 flex items-center gap-1.5">
@@ -215,7 +276,24 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="pt-1 flex justify-end border-t border-slate-800">
+        <div className="pt-1 flex items-center justify-between border-t border-slate-800">
+          <div className="flex items-center gap-2">
+            {session && (
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="px-3 py-2 rounded-xl bg-slate-800/60 hover:bg-rose-950/60 text-slate-500 hover:text-rose-300 text-[11px] font-medium flex items-center gap-1 transition-colors disabled:opacity-50"
+                title="注销账号：删除昵称、手机号、余额与充值记录"
+              >
+                <UserX className="w-3.5 h-3.5" /> {deleting ? '注销中...' : '注销账号'}
+              </button>
+            )}
+            {!session && (
+              <span className="text-[11px] text-slate-600 flex items-center gap-1">
+                <LogOut className="w-3 h-3" /> 当前为游客身份
+              </span>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors"

@@ -1,6 +1,6 @@
 import React from 'react';
-import { AppMode } from '../types';
-import { Scale, Coins, Disc, Archive, Volume2, VolumeX, Sparkles, User } from 'lucide-react';
+import { AppMode, SessionUser } from '../types';
+import { Scale, Coins, Disc, Archive, Volume2, VolumeX, Sparkles, User, LogOut, KeyRound } from 'lucide-react';
 import { setSoundEnabled } from '../utils/audio';
 
 interface HeaderProps {
@@ -10,7 +10,10 @@ interface HeaderProps {
   onToggleSound: () => void;
   onOpenMonetization: () => void;
   onOpenProfile: () => void;
+  onOpenQuota: () => void;
   hasProfile: boolean;
+  user?: SessionUser | null;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,7 +23,10 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleSound,
   onOpenMonetization,
   onOpenProfile,
+  onOpenQuota,
   hasProfile,
+  user,
+  onLogout,
 }) => {
   return (
     <header className="w-full border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-40">
@@ -99,8 +105,42 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Right Tools: Profile, Monetization Button & Sound Toggle */}
+        {/* Right Tools: User, Profile, Quota, Sound */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* 登录用户信息 + 退出 */}
+          {user && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-800">
+              {user.avatar ? (
+                <img src={user.avatar} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 text-[10px] font-bold shrink-0">
+                  {user.nickname?.slice(0, 1) || '微'}
+                </div>
+              )}
+              <span className="text-[11px] text-slate-300 max-w-[80px] truncate hidden sm:inline">
+                {user.nickname}
+              </span>
+              {user.phone && (
+                <span className="text-[10px] text-slate-500 font-mono hidden md:inline">{user.phone}</span>
+              )}
+              <button
+                onClick={onLogout}
+                title="退出登录"
+                className="p-1 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-950/40 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={onOpenQuota}
+            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-amber-300 hover:text-amber-200 transition-colors"
+            title="我的额度 / 接入 Key / 充值"
+          >
+            <KeyRound className="w-4 h-4" />
+          </button>
+
           <button
             onClick={onOpenProfile}
             className={`p-2 rounded-xl border transition-colors relative ${
