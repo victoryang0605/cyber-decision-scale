@@ -110,15 +110,11 @@ export const Header: React.FC<HeaderProps> = ({
           {/* 登录用户信息 + 退出 */}
           {user && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-800">
-              {user.avatar ? (
-                <img src={user.avatar} alt="" className="w-6 h-6 rounded-full object-cover shrink-0" />
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 text-[10px] font-bold shrink-0">
-                  {user.nickname?.slice(0, 1) || '微'}
-                </div>
-              )}
+              <div className="w-6 h-6 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 text-[10px] font-bold shrink-0">
+                {user.username?.slice(0, 1) || '用'}
+              </div>
               <span className="text-[11px] text-slate-300 max-w-[80px] truncate hidden sm:inline">
-                {user.nickname}
+                {user.username}
               </span>
               {user.phone && (
                 <span className="text-[10px] text-slate-500 font-mono hidden md:inline">{user.phone}</span>

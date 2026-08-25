@@ -2,17 +2,19 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
+import { callDeepSeekJson, generateFallbackDecision, DecisionInput } from './src/decisionEngine';
 import {
-  callDeepSeekJson,
-  generateFallbackDecision,
-  DecisionInput,
-  MemoryQuotaStore,
-  MemoryCreditStore,
-  resolveFreeLimit,
-} from './src/decisionEngine';
-import { CsvUserStore, signSessionToken, verifySessionToken } from './src/userStore';
+  CsvStore,
+  RECHARGE_PACKAGES,
+  verifyPassword,
+  signSessionToken,
+  verifySessionToken,
+} from './src/userStore';
 
 dotenv.config({ path: ['.env.local', '.env'] });
+
+const USERNAME_RE = /^[\w\u4e00-\u9fa5]{2,20}$/;
+const PHONE_RE = /^1\d{10}$/;
 
 async function startServer() {
   const app = express();
@@ -21,15 +23,9 @@ async function startServer() {
 
   app.use(express.json());
 
-  const freeLimit = resolveFreeLimit(process.env.FREE_QUOTA_LIMIT);
-  // 微信登录用户：CSV 持久化存储（users.csv / recharges.csv）
-  const userStore = new CsvUserStore();
-  // 匿名兜底（未配置微信时）：内存额度
-  const quotaStore = new MemoryQuotaStore(freeLimit);
-  const creditStore = new MemoryCreditStore();
-
+  // CSV 持久化存储：users.csv / recharges.csv / devices.csv
+  const store = new CsvStore();
   const SESSION_SECRET = process.env.SESSION_SECRET || process.env.ADMIN_SECRET || 'dev-session-secret';
-  const wechatEnabled = Boolean(process.env.WECHAT_APPID && process.env.WECHAT_APPSECRET);
 
   /** 从请求提取会话令牌（Authorization: Bearer 或 ?token） */
   const extractToken = (req: express.Request): string | null => {
@@ -39,13 +35,23 @@ async function startServer() {
     return null;
   };
 
-  /** 返回当前登录用户（未登录返回 null） */
-  const currentUser = (req: express.Request) => {
+  /** 返回当前登录用户名（未登录返回 null） */
+  const currentUsername = (req: express.Request): string | null => {
     const token = extractToken(req);
-    if (!token || !SESSION_SECRET) return null;
-    const openid = verifySessionToken(token, SESSION_SECRET);
-    if (!openid) return null;
-    return userStore.get(openid) || null;
+    if (!token) return null;
+    return verifySessionToken(token, SESSION_SECRET);
+  };
+
+  /** 序列化用户信息给前端 */
+  const serializeUser = (username: string) => {
+    const u = store.accountStatus(username);
+    if (!u) return null;
+    return {
+      username: u.username,
+      phone: u.phone,
+      balance: u.balance,
+      freeRemaining: u.freeRemaining,
+    };
   };
 
   // Health check API
@@ -53,140 +59,122 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // ---- 微信登录 ----
+  // ---- 注册 / 登录 ----
+
   app.get('/api/auth/status', (req, res) => {
-    const token = extractToken(req);
-    const user = currentUser(req);
-    res.json({
-      wechatEnabled,
-      loggedIn: Boolean(user),
-      user: user
-        ? {
-            openid: user.openid,
-            nickname: user.nickname,
-            avatar: user.avatar,
-            phone: user.phone,
-            balance: user.balance,
-            freeUsed: user.freeUsed,
-            freeLimit: user.freeLimit,
-            remaining: Math.max(0, user.freeLimit - user.freeUsed),
-          }
-        : undefined,
-    });
+    const username = currentUsername(req);
+    const user = username ? store.findByUsername(username) : undefined;
+    res.json({ loggedIn: Boolean(user), user: user ? serializeUser(username) : undefined });
   });
 
-  // 跳转微信网页授权（须在微信内打开；公众号后台需配置网页授权域名）
-  app.get('/api/auth/wechat', (req, res) => {
-    if (!wechatEnabled) {
-      return res.status(503).json({ error: '微信登录未配置（缺少 WECHAT_APPID / WECHAT_APPSECRET）' });
+  // 注册：用户名 + 手机号 + 密码，注册送 3 次免费使用
+  app.post('/api/auth/register', (req, res) => {
+    const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+    const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+
+    if (!USERNAME_RE.test(username)) {
+      return res.status(400).json({ error: '用户名需为 2-20 位中文/字母/数字/下划线' });
     }
-    const appid = process.env.WECHAT_APPID!;
-    const base = process.env.APP_URL || `http://localhost:${PORT}`;
-    const redirectUri = `${base}/api/auth/wechat/callback`;
-    const state = Math.random().toString(36).slice(2);
-    const url =
-      `https://open.weixin.qq.com/connect/oauth2/authorize?appid=${appid}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=snsapi_userinfo&state=${state}#wechat_redirect`;
-    res.cookie('wx_state', state, { httpOnly: true, sameSite: 'lax', maxAge: 10 * 60 * 1000 });
-    res.redirect(url);
+    if (!PHONE_RE.test(phone)) {
+      return res.status(400).json({ error: '手机号格式不正确' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ error: '密码至少 6 位' });
+    }
+
+    const result = store.register(username, phone, password);
+    if (result.ok === false) {
+      return res.status(400).json({ error: result.error });
+    }
+    const token = signSessionToken(username, SESSION_SECRET);
+    res.json({ ok: true, token, user: serializeUser(username), freeGift: true, message: '注册成功，已赠送 3 次免费使用' });
   });
 
-  // 微信授权回调：换取用户信息 → 注册/登录 → 签发会话令牌 → 跳回前端
-  app.get('/api/auth/wechat/callback', async (req, res) => {
-    const { code, state } = req.query as { code?: string; state?: string };
-    if (!code) return res.status(400).send('缺少授权 code');
-    if (!state || state !== (req.cookies as Record<string, string> | undefined)?.wx_state) {
-      return res.status(400).send('state 校验失败，请重试');
+  // 登录：用户名 + 密码
+  app.post('/api/auth/login', (req, res) => {
+    const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const user = store.findByUsername(username);
+    if (!user || !verifyPassword(password, user.passwordHash)) {
+      return res.status(401).json({ error: '用户名或密码错误' });
     }
-    const appid = process.env.WECHAT_APPID;
-    const secret = process.env.WECHAT_APPSECRET;
-    if (!appid || !secret) return res.status(503).send('微信登录未配置');
-
-    try {
-      const tokenRes = await fetch(
-        `https://api.weixin.qq.com/sns/oauth2/access_token?appid=${appid}&secret=${secret}&code=${code}&grant_type=authorization_code`,
-      );
-      const tokenData = (await tokenRes.json()) as { openid?: string; access_token?: string; errcode?: number; errmsg?: string };
-      if (!tokenData.openid || !tokenData.access_token) {
-        return res.status(400).send(`微信授权失败：${tokenData.errmsg || 'unknown'}`);
-      }
-
-      const infoRes = await fetch(
-        `https://api.weixin.qq.com/sns/userinfo?access_token=${tokenData.access_token}&openid=${tokenData.openid}&lang=zh_CN`,
-      );
-      const info = (await infoRes.json()) as { nickname?: string; headimgurl?: string; errcode?: number };
-      const user = userStore.getOrCreate(tokenData.openid, info.nickname || '微信用户', info.headimgurl || '', freeLimit);
-      const token = signSessionToken(user.openid, SESSION_SECRET);
-      const base = process.env.APP_URL || `http://localhost:${PORT}`;
-      res.redirect(`${base}/?login_token=${encodeURIComponent(token)}`);
-    } catch (err) {
-      console.error('WeChat OAuth error:', err);
-      res.status(500).send('微信登录失败，请稍后再试');
+    // 关联设备：记录该设备曾被此账号使用
+    if (typeof req.body?.deviceId === 'string' && req.body.deviceId) {
+      store.linkDeviceToUser(req.body.deviceId, username);
     }
+    const token = signSessionToken(username, SESSION_SECRET);
+    res.json({ ok: true, token, user: serializeUser(username) });
   });
 
   // ---- 用户信息 ----
+
   app.get('/api/user/me', (req, res) => {
-    const user = currentUser(req);
+    const username = currentUsername(req);
+    const user = serializeUser(username || '');
     if (!user) return res.status(401).json({ error: '未登录' });
-    res.json({
-      openid: user.openid,
-      nickname: user.nickname,
-      avatar: user.avatar,
-      phone: user.phone,
-      balance: user.balance,
-      freeUsed: user.freeUsed,
-      freeLimit: user.freeLimit,
-      remaining: Math.max(0, user.freeLimit - user.freeUsed),
-    });
+    res.json(user);
   });
 
-  // 绑定/更新手机号
+  // 修改手机号
   app.post('/api/user/phone', (req, res) => {
-    const user = currentUser(req);
-    if (!user) return res.status(401).json({ error: '未登录' });
+    const username = currentUsername(req);
+    if (!username || !store.findByUsername(username)) return res.status(401).json({ error: '未登录' });
     const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
-    if (!/^1\d{10}$/.test(phone)) {
-      return res.status(400).json({ error: '手机号格式不正确' });
-    }
-    const updated = userStore.updatePhone(user.openid, phone);
-    res.json({ ok: true, phone: updated?.phone });
+    if (!PHONE_RE.test(phone)) return res.status(400).json({ error: '手机号格式不正确' });
+    const updated = store.updatePhone(username, phone);
+    if (!updated) return res.status(400).json({ error: '手机号已被其他账号使用' });
+    res.json({ ok: true, phone: updated.phone });
   });
 
-  // 注销账号：删除 CSV 中的用户与充值记录
+  // 注销账号：删除 users.csv 中的账号与 recharges.csv 流水
   app.delete('/api/user', (req, res) => {
-    const user = currentUser(req);
-    if (!user) return res.status(401).json({ error: '未登录' });
-    userStore.removeUser(user.openid);
+    const username = currentUsername(req);
+    if (!username || !store.findByUsername(username)) return res.status(401).json({ error: '未登录' });
+    store.removeUser(username);
     res.json({ ok: true, message: '账号已注销，你的信息已从服务器删除' });
   });
 
-  // ---- 管理员：发放付费次数（收款码 + 人工确认）----
+  // ---- 充值套餐 ----
+
+  app.get('/api/packages', (req, res) => {
+    res.json({ packages: RECHARGE_PACKAGES });
+  });
+
+  // ---- 管理员：按套餐发放次数（收款码 + 人工确认）----
+  // body: { username, package?: 'p5'|'p10'|'p100', credits?, amountYuan?, secret }
   app.post('/api/admin/add-credits', (req, res) => {
-    const { userId, amount, secret, note } = req.body ?? {};
+    const { username, package: pkg, credits, amountYuan, secret, note } = req.body ?? {};
     const adminSecret = process.env.ADMIN_SECRET;
     if (!adminSecret || secret !== adminSecret) {
       return res.status(403).json({ error: '无权限：请配置并传入 ADMIN_SECRET' });
     }
-    const uid = typeof userId === 'string' && userId.trim() ? userId.trim() : '';
-    const amt = Number(amount);
-    if (!uid || !Number.isFinite(amt) || amt <= 0) {
-      return res.status(400).json({ error: '参数无效：userId 与 amount(>0) 必填' });
+    const uname = typeof username === 'string' && username.trim() ? username.trim() : '';
+    if (!uname || !store.findByUsername(uname)) {
+      return res.status(400).json({ error: '用户不存在，请确认用户提供的用户名' });
     }
-    // 优先写入 CSV（登录用户）；否则写内存（匿名兜底）
-    const existing = userStore.get(uid);
-    if (existing) {
-      const balance = userStore.addCredits(uid, amt, typeof note === 'string' ? note : '');
-      res.json({ ok: true, userId: uid, added: Math.floor(amt), balance });
+
+    let pkgId = 'custom';
+    let yuan = 0;
+    let creditsNum = 0;
+    const matched = RECHARGE_PACKAGES.find((p) => p.id === pkg);
+    if (matched) {
+      pkgId = matched.id;
+      yuan = matched.price;
+      creditsNum = matched.credits;
     } else {
-      const balance = creditStore.add(uid, amt);
-      res.json({ ok: true, userId: uid, added: Math.floor(amt), balance, note: '匿名内存余额' });
+      yuan = Number(amountYuan) || 0;
+      creditsNum = Number(credits) || 0;
+      if (creditsNum <= 0) return res.status(400).json({ error: '参数无效：请传 package 套餐，或 credits(>0)' });
     }
+
+    const balance = store.addCredits(uname, pkgId, yuan, creditsNum, typeof note === 'string' ? note : '');
+    res.json({ ok: true, username: uname, package: pkgId, amountYuan: yuan, added: creditsNum, balance });
   });
 
   // ---- 决策分析 ----
   app.post('/api/decision/analyze', async (req, res) => {
-    const { dilemma, optionA, optionB, mode, tone, userProfile, userId, userKey } = req.body;
+    const { dilemma, optionA, optionB, mode, tone, userProfile, deviceId, userKey } = req.body;
 
     if (!dilemma) {
       return res.status(400).json({ error: '请提供您面临的纠结或选择！' });
@@ -205,29 +193,34 @@ async function startServer() {
       return res.json(generateFallbackDecision(input));
     }
 
-    // 登录用户：openid（CSV 持久化）；匿名兜底：内存
-    const loginUser = currentUser(req);
-    const uid = loginUser ? loginUser.openid : typeof userId === 'string' && userId.trim() ? userId.trim() : 'anonymous';
+    // 登录用户按账号限额度（跨设备跟随账号）；匿名按设备指纹限 3 次
+    const username = currentUsername(req);
+    const loggedInUser = username ? store.findByUsername(username) : undefined;
+    const deviceFp = typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim() : '';
+
+    const quotaFor403 = (used: number, limit: number, credits: number) => ({
+      used,
+      limit,
+      remaining: Math.max(0, limit - used),
+      credits,
+    });
 
     if (usingOwnerKey) {
-      if (loginUser) {
-        if (!userStore.canUse(uid)) {
+      if (loggedInUser) {
+        if (!store.canUseAccount(loggedInUser.username)) {
+          const s = store.accountStatus(loggedInUser.username)!;
           return res.status(403).json({
-            error: '免费次数已用完',
+            error: '使用次数已用完',
             code: 'FREE_LIMIT_EXCEEDED',
-            quota: {
-              used: loginUser.freeUsed,
-              limit: loginUser.freeLimit,
-              remaining: Math.max(0, loginUser.freeLimit - loginUser.freeUsed),
-              credits: loginUser.balance,
-            },
+            quota: quotaFor403(0, 0, s.balance),
           });
         }
-      } else if (creditStore.balance(uid) <= 0 && !quotaStore.canUse(uid)) {
+      } else if (!store.canUseDevice(deviceFp)) {
+        const d = store.deviceStatus(deviceFp);
         return res.status(403).json({
-          error: '免费次数已用完',
+          error: '游客免费次数（3 次/设备）已用完，请注册登录后继续使用',
           code: 'FREE_LIMIT_EXCEEDED',
-          quota: { ...quotaStore.status(uid), credits: 0 },
+          quota: quotaFor403(d.used, d.limit, 0),
         });
       }
     }
@@ -241,25 +234,27 @@ async function startServer() {
       // 只有真正调用了 LLM（产生费用）才扣减额度
       let quota;
       if (usingOwnerKey) {
-        if (loginUser) {
-          userStore.consume(uid);
-          const u = userStore.get(uid)!;
+        if (loggedInUser) {
+          store.consumeAccount(loggedInUser.username);
+          const s = store.accountStatus(loggedInUser.username)!;
           quota = {
-            used: u.freeUsed,
-            limit: u.freeLimit,
-            remaining: Math.max(0, u.freeLimit - u.freeUsed),
-            credits: u.balance,
+            username: s.username,
+            balance: s.balance,
+            freeRemaining: s.freeRemaining,
+            used: 0,
+            limit: 0,
+            remaining: s.balance + s.freeRemaining,
+            credits: s.balance,
           };
         } else {
-          if (!creditStore.consume(uid)) {
-            quotaStore.consume(uid);
-          }
-          quota = { ...quotaStore.status(uid), credits: creditStore.balance(uid) };
+          store.consumeDevice(deviceFp);
+          const d = store.deviceStatus(deviceFp);
+          quota = quotaFor403(d.used, d.limit, 0);
         }
       } else {
-        quota = loginUser
-          ? { used: loginUser.freeUsed, limit: loginUser.freeLimit, remaining: Math.max(0, loginUser.freeLimit - loginUser.freeUsed), credits: loginUser.balance }
-          : { ...quotaStore.status(uid), credits: creditStore.balance(uid) };
+        quota = loggedInUser
+          ? { username: loggedInUser.username, balance: 0, freeRemaining: 0, used: 0, limit: 0, remaining: -1, credits: 0 }
+          : { used: 0, limit: 0, remaining: -1, credits: 0 };
       }
       res.json({ ...data, quota });
     } catch (err: any) {
@@ -286,8 +281,7 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[拿个主意 · AI 决策助手] Server running on http://localhost:${PORT}`);
-    console.log(`微信登录：${wechatEnabled ? '已启用' : '未配置（当前为匿名模式）'}`);
-    console.log(`用户数据：${path.join(process.cwd(), 'data', 'users.csv')}`);
+    console.log(`数据文件：${path.join(process.cwd(), 'data')} (users.csv / recharges.csv / devices.csv)`);
   });
 }
 

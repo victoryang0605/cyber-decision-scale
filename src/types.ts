@@ -28,18 +28,16 @@ export interface QuotaInfo {
   remaining: number;
   /** 付费余额（次数），有余额时优先消耗 */
   credits?: number;
+  /** 登录用户：注册赠送的剩余免费次数 */
+  freeRemaining?: number;
 }
 
-/** 微信登录后的会话用户（服务端 /api/auth/status、/api/user/me 返回） */
+/** 登录用户（服务端 /api/auth/status、/api/user/me 返回） */
 export interface SessionUser {
-  openid: string;
-  nickname: string;
-  avatar: string;
+  username: string;
   phone: string;
   balance: number;
-  freeUsed: number;
-  freeLimit: number;
-  remaining: number;
+  freeRemaining: number;
 }
 
 export interface WeightItem {

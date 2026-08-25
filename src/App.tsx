@@ -15,7 +15,8 @@ import { SharePosterModal } from './components/SharePosterModal';
 import { MonetizationModal } from './components/MonetizationModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { QuotaModal } from './components/QuotaModal';
-import { LoginGate } from './components/LoginGate';
+import { AuthPanel } from './components/LoginGate';
+import { getDeviceFingerprint } from './utils/device';
 
 import {
   Sparkles,
@@ -85,38 +86,23 @@ export default function App() {
   const [quotaExceeded, setQuotaExceeded] = useState<boolean>(false);
   const [userKey, setUserKey] = useState<string>('');
 
-  // Auth / Session State（微信登录）
+  // Auth / Session State（用户名+手机号注册登录）
   const [session, setSession] = useState<SessionUser | null>(null);
-  const [authChecked, setAuthChecked] = useState<boolean>(false);
-  const [wechatEnabled, setWechatEnabled] = useState<boolean>(false);
-  const [anonymousMode, setAnonymousMode] = useState<boolean>(false);
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
 
-  // 启动时检查登录状态（微信回调带回 login_token 时先保存）
+  // 启动时检查登录状态
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const loginToken = params.get('login_token');
-      if (loginToken) {
-        localStorage.setItem(TOKEN_STORAGE_KEY, loginToken);
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-    } catch (e) {
-      console.warn('Failed to handle login token', e);
-    }
-
     const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     fetch('/api/auth/status', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
       .then((r) => r.json())
       .then((d) => {
-        setWechatEnabled(Boolean(d.wechatEnabled));
         if (d.loggedIn && d.user) {
           setSession(d.user);
         }
       })
-      .catch(() => {})
-      .finally(() => setAuthChecked(true));
+      .catch(() => {});
   }, []);
 
   // Load history & profile from localStorage on startup
@@ -196,7 +182,19 @@ export default function App() {
 
   const handleClearUserKey = () => handleSaveUserKey('');
 
-  /** 退出登录（清除本机会话令牌，微信登录启用时回到登录门禁） */
+  /** 注册/登录成功回调 */
+  const handleAuthed = (token: string, user: SessionUser) => {
+    try {
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    } catch (e) {
+      console.warn('Failed to save session', e);
+    }
+    setSession(user);
+    setShowAuthModal(false);
+    setQuotaExceeded(false);
+  };
+
+  /** 退出登录（清除本机会话令牌；游客回到设备免费额度） */
   const handleLogout = () => {
     try {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
@@ -287,14 +285,14 @@ export default function App() {
           mode: isBinaryMode ? 'binary' : 'single',
           tone: selectedTone,
           userProfile: userProfile ?? undefined,
-          userId: getOrCreateUid(),
+          deviceId: getDeviceFingerprint(),
           userKey: userKey || undefined,
         }),
       });
 
       const data = await response.json();
 
-      // 免费额度已用完：弹出付费引导（接入自己的 Key / 充值）
+      // 使用次数已用完：弹出注册/充值引导
       if (response.status === 403 && data.code === 'FREE_LIMIT_EXCEEDED') {
         setQuota(data.quota ?? null);
         setQuotaExceeded(true);
@@ -306,15 +304,13 @@ export default function App() {
       const { quota: serverQuota, ...resultData } = data;
       if (serverQuota) {
         setQuota(serverQuota);
-        // 同步会话中的额度/余额（登录用户）
+        // 同步会话中的余额/注册赠送（登录用户）
         setSession((prev) =>
           prev
             ? {
                 ...prev,
-                balance: serverQuota.credits ?? prev.balance,
-                freeUsed: serverQuota.used,
-                freeLimit: serverQuota.limit,
-                remaining: serverQuota.remaining,
+                balance: serverQuota.credits ?? serverQuota.balance ?? prev.balance,
+                freeRemaining: serverQuota.freeRemaining ?? prev.freeRemaining,
               }
             : prev,
         );
@@ -362,16 +358,6 @@ export default function App() {
     setCurrentResult(updated);
     saveHistoryItem(updated);
   };
-
-  // 微信登录已启用且未登录时，先进入登录门禁（用户须微信注册后才能使用）
-  if (authChecked && wechatEnabled && !session && !anonymousMode) {
-    return (
-      <LoginGate
-        allowAnonymous={false}
-        onAnonymous={() => setAnonymousMode(true)}
-      />
-    );
-  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
@@ -811,16 +797,17 @@ export default function App() {
         />
       )}
 
-      {/* Quota / BYOK Modal */}
+      {/* Quota / BYOK / Recharge Modal */}
       {showQuotaModal && (
         <QuotaModal
           quota={quota}
           userKey={userKey}
-          userId={session ? session.openid : getOrCreateUid()}
+          userId={session ? session.username : getOrCreateUid()}
           session={session}
           exceeded={quotaExceeded}
           onSaveKey={handleSaveUserKey}
           onClearKey={handleClearUserKey}
+          onOpenAuth={() => setShowAuthModal(true)}
           onSavePhone={handleSavePhone}
           onDeleteAccount={handleDeleteAccount}
           onClose={() => {
@@ -829,6 +816,9 @@ export default function App() {
           }}
         />
       )}
+
+      {/* 注册 / 登录 Modal */}
+      {showAuthModal && <AuthPanel onAuthed={handleAuthed} />}
     </div>
   );
 }
