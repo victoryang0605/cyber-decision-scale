@@ -40,11 +40,22 @@ git push -u origin main
    | `DEEPSEEK_BASE_URL` | `https://api.deepseek.com`（可选） |
 5. 点击 **Save and Deploy**
 
+> ⚠️ **重要**：Build output directory 必须填 `dist`（不含前导斜杠）。仓库**不要**包含 `wrangler.toml`——Git 集成部署由控制台配置驱动，多余的 `wrangler.toml` 会导致部署阶段报 `Missing entry-point to Worker script or to assets directory`。
+
 ### 第 3 步：完成
 
 部署完成后你会得到形如 `https://cyber-decision-scale.pages.dev` 的公网地址，可直接分享。
 
 之后每次 `git push` 到 main 分支都会自动触发重新构建部署；也可以在 Pages 项目里绑定自定义域名（免费）。
+
+### 常见问题：部署阶段报错 Missing entry-point
+
+构建成功、但最后一步（Executing user deploy command）报 `Missing entry-point to Worker script or to assets directory` 时，依次检查：
+
+1. **确认 Build output directory 已填 `dist`**（Pages 项目 → Settings → Builds & deployments → Build configurations）
+2. **确认仓库根目录没有 `wrangler.toml`**（本项目已移除；Git 集成部署不需要它）
+3. 若上述都没问题，把部署命令改为 Pages 专用命令：Settings → Builds & deployments → **Deploy command** 填 `npx wrangler pages deploy`
+4. 修正后重新部署：Pages 项目 → Deployments → **Retry deployment**
 
 ---
 
