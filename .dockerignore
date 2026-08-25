@@ -1,0 +1,14 @@
+node_modules
+dist
+data
+.git
+.gitignore
+tmp-images
+.env
+.env.local
+.env.*
+!.env.example
+.dev.vars
+*.log
+Dockerfile
+.dockerignore
