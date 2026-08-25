@@ -1,0 +1,8 @@
+# Cloudflare Pages 配置（通过 GitHub 集成部署时此文件非必需；本地 CLI 部署时使用）
+# 参考: https://developers.cloudflare.com/pages/configuration/wrangler-configuration/
+
+name = "cyber-decision-scale"
+compatibility_date = "2025-08-25"
+
+# 静态产物目录（npm run build 的输出），functions/ 目录会被自动识别并部署
+pages_build_output_dir = "dist"

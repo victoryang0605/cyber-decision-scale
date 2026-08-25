@@ -1,0 +1,6 @@
+{
+  "name": "赛博决策天平 · Cyber Decision Scale",
+  "description": "治愈选择困难症的赛博裁决所。AI 多重人格辩论推演、物理级天平博弈、抛硬币/命运轮盘与一键生成社交裁决卡片。LLM 后端：DeepSeek。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_LLM_API"]
+}
