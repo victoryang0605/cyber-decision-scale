@@ -25,9 +25,10 @@
 
 未配置 `DEEPSEEK_API_KEY` 时，`/api/decision/analyze` 会自动降级为内置启发式裁决结果，应用仍可正常演示。
 
-## 免费部署到公网（Cloudflare Pages）
+## 免费部署到公网
 
-前端与 API 可整体免费部署到 Cloudflare Pages（始终在线、10 万请求/天免费、无需休眠），步骤见 **[DEPLOY.md](DEPLOY.md)** —— 推送到 GitHub 后在 Cloudflare 控制台连仓库即可，只需配置 `DEEPSEEK_API_KEY` 环境变量。
+- **Cloudflare Pages**（始终在线、免费，推荐主站）：前端与 API 整体部署，步骤见 **[DEPLOY.md](DEPLOY.md)**——推送到 GitHub 后在 Cloudflare 控制台连仓库即可，只需配置 `DEEPSEEK_API_KEY` 环境变量。
+- **Zeabur**（零改造、国内友好，免费版空闲自动休眠）：Express 服务原样部署，步骤见 **[DEPLOY_ZEABUR.md](DEPLOY_ZEABUR.md)**。
 
 ## 常用命令
 

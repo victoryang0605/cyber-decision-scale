@@ -8,7 +8,8 @@ dotenv.config({ path: ['.env.local', '.env'] });
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  // 兼容 Zeabur / Render / Fly 等 PaaS：由平台注入 PORT，本地默认 3000
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(express.json());
 
