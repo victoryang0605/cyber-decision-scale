@@ -33,14 +33,19 @@ export const AuthPanel: React.FC<AuthPanelProps> = ({ onAuthed }) => {
             : { username, password, deviceId: getDeviceFingerprint() },
         ),
       });
-      const data = await res.json();
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        // 响应不是 JSON（如服务端 404/HTML 或网关错误）——给出更明确提示
+      }
       if (!res.ok) {
-        setError(data.error || '操作失败，请稍后再试');
+        setError(typeof data.error === 'string' ? data.error : `请求失败（HTTP ${res.status}），请稍后重试`);
         return;
       }
-      onAuthed(data.token, data.user);
+      onAuthed(data.token as string, data.user as { username: string; phone: string; balance: number; freeRemaining: number });
     } catch {
-      setError('网络错误，请稍后再试');
+      setError('无法连接服务器：若使用的是免费托管，服务休眠唤醒需要几秒，请稍等片刻后重试');
     } finally {
       setBusy(false);
     }
