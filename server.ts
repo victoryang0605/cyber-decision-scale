@@ -64,7 +64,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Cyber Decision Scale] Server running on http://localhost:${PORT}`);
+    console.log(`[拿个主意 · AI 决策助手] Server running on http://localhost:${PORT}`);
   });
 }
 

@@ -212,7 +212,7 @@ export default function App() {
                 <Sparkles className="w-3.5 h-3.5" /> 治愈选择困难症 · AI 物理天平与多重人格推演
               </div>
               <h1 className="text-2xl sm:text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-slate-100 via-cyan-100 to-blue-200">
-                赛博决策裁决所
+                拿个主意 · AI 决策助手
               </h1>
               <p className="text-xs sm:text-sm text-slate-400">
                 让【理性天使】与【毒舌恶魔】为你进行终极博弈，量化利弊砝码，一击击碎精神内耗

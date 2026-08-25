@@ -40,7 +40,7 @@ export const MonetizationModal: React.FC<MonetizationModalProps> = ({ onClose })
             </div>
             <div>
               <h3 className="text-lg font-bold text-slate-100">
-                赛博决策天平 · 商业变现与盈利模型展示
+                拿个主意 · 商业变现与盈利模型展示
               </h3>
               <p className="text-xs text-slate-400">
                 轻量爆款小工具经海外/国内独立开发者验证的 4 大现金流变现矩阵

@@ -51,13 +51,13 @@ export const SharePosterModal: React.FC<SharePosterModalProps> = ({ decision, on
   };
 
   const handleCopyText = () => {
-    const text = `⚖️【赛博决策裁决所 · 裁决令】
+    const text = `⚖️【拿个主意 · 裁决令】
 纠结议题：${decision.dilemma}
 裁决倾向：${decision.finalVerdict.title}
 天平指数：${decision.scoreA}% (${decision.optionA}) vs ${decision.scoreB}% (${decision.optionB})
 神圣金句：${decision.finalVerdict.punchline}
 微行动指南：${decision.microAction.step1} ${decision.microAction.step2}（${decision.microAction.deadline}）
-—— 来自「赛博决策天平 · Cyber Decision Scale」`;
+—— 来自「拿个主意 · AI 决策助手」`;
 
     navigator.clipboard.writeText(text).then(() => {
       setIsCopied(true);
@@ -199,7 +199,7 @@ export const SharePosterModal: React.FC<SharePosterModalProps> = ({ decision, on
                   ))}
                 </div>
                 <div className="text-[10px] text-slate-400">
-                  {showWatermark ? '★ 赛博决策天平 · 一键治愈选择困难症 ★' : 'CYBER DECISION SCALE'}
+                  {showWatermark ? '★ 拿个主意 · 一键治愈选择困难症 ★' : 'AI DECISION HELPER'}
                 </div>
               </div>
             </div>
@@ -308,7 +308,7 @@ export const SharePosterModal: React.FC<SharePosterModalProps> = ({ decision, on
                   {decision.oraclePerspective.cosmicSign}
                 </p>
                 <div className="text-[10px] text-slate-400 font-mono">
-                  {showWatermark ? '赛博决策天平 · Cyber Decision Scale' : 'DECISION RECORD'}
+                  {showWatermark ? '拿个主意 · AI 决策助手' : 'DECISION RECORD'}
                 </div>
               </div>
             </div>
