@@ -21,6 +21,13 @@ export interface UserProfile {
   updatedAt?: number;
 }
 
+/** 免费额度信息（服务端返回） */
+export interface QuotaInfo {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
 export interface WeightItem {
   id?: string;
   label: string;

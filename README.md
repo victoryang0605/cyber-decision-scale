@@ -5,6 +5,7 @@
 **核心功能：**
 - ⚖️ 天平推演：DeepSeek 多重人格（理性天使/毒舌恶魔/赛博预言家）博弈 + 量化砝码 + 神圣裁决令
 - 🧠 **用户画像个性化决策**：填写性格、工作、学习、生活与当下状态等基本场景，每次推演时作为参数录入，LLM 结合画像给出量身定制的决策依据（仅存于浏览器 localStorage）
+- 💰 **免费额度 + BYOK**：每个匿名用户默认免费 3 次（`FREE_QUOTA_LIMIT` 可调）；用户可接入自己的 DeepSeek API Key，之后调用走用户自己的账户计费、不受额度限制（Key 仅存本机，不落服务器）
 - 🪙 命运硬币 / 🎡 赛博轮盘 / 🗄️ 决策档案馆 / 🎴 社交裁决卡片一键导出
 
 **LLM 后端：DeepSeek（OpenAI 兼容 API）**，默认模型 `deepseek-chat`（DeepSeek-V3），可选 `deepseek-reasoner`（DeepSeek-R1）。

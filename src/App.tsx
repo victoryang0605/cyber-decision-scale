@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
-import { AppMode, DecisionResult, PresetDilemma, UserProfile, WeightItem } from './types';
+import { AppMode, DecisionResult, PresetDilemma, QuotaInfo, UserProfile, WeightItem } from './types';
 import { PRESET_DILEMMAS } from './utils/presetDilemmas';
 import { playGavelSound, playSuccessChime, setSoundEnabled, getSoundEnabled } from './utils/audio';
 
@@ -14,6 +14,7 @@ import { HistoryArchive } from './components/HistoryArchive';
 import { SharePosterModal } from './components/SharePosterModal';
 import { MonetizationModal } from './components/MonetizationModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { QuotaModal } from './components/QuotaModal';
 
 import {
   Sparkles,
@@ -30,10 +31,27 @@ import {
   History,
   Layers,
   User,
+  KeyRound,
 } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'cyber_decision_scale_history_v1';
 const PROFILE_STORAGE_KEY = 'cyber_decision_scale_profile_v1';
+const UID_STORAGE_KEY = 'cyber_decision_scale_uid_v1';
+const USERKEY_STORAGE_KEY = 'cyber_decision_scale_userkey_v1';
+
+/** 生成/复用匿名用户 ID（用于免费额度计数；仅存本机浏览器） */
+function getOrCreateUid(): string {
+  try {
+    let uid = localStorage.getItem(UID_STORAGE_KEY);
+    if (!uid) {
+      uid = `u_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(UID_STORAGE_KEY, uid);
+    }
+    return uid;
+  } catch {
+    return 'anonymous';
+  }
+}
 
 export default function App() {
   const [currentMode, setCurrentMode] = useState<AppMode>('scale');
@@ -55,9 +73,15 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState<boolean>(false);
   const [showMonetizationModal, setShowMonetizationModal] = useState<boolean>(false);
   const [showProfileModal, setShowProfileModal] = useState<boolean>(false);
+  const [showQuotaModal, setShowQuotaModal] = useState<boolean>(false);
 
   // User Profile State
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  // Quota & BYOK State
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  const [quotaExceeded, setQuotaExceeded] = useState<boolean>(false);
+  const [userKey, setUserKey] = useState<string>('');
 
   // Load history & profile from localStorage on startup
   useEffect(() => {
@@ -80,6 +104,15 @@ export default function App() {
       }
     } catch (e) {
       console.warn('Failed to load user profile from localStorage', e);
+    }
+
+    try {
+      const savedKey = localStorage.getItem(USERKEY_STORAGE_KEY);
+      if (savedKey) {
+        setUserKey(savedKey);
+      }
+    } catch (e) {
+      console.warn('Failed to load user key from localStorage', e);
     }
   }, []);
 
@@ -111,6 +144,22 @@ export default function App() {
     }
   };
 
+  const handleSaveUserKey = (key: string) => {
+    setUserKey(key);
+    setQuotaExceeded(false);
+    try {
+      if (key) {
+        localStorage.setItem(USERKEY_STORAGE_KEY, key);
+      } else {
+        localStorage.removeItem(USERKEY_STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn('Failed to save user key to localStorage', e);
+    }
+  };
+
+  const handleClearUserKey = () => handleSaveUserKey('');
+
   const handleToggleSound = () => {
     const next = !soundOn;
     setSoundOn(next);
@@ -141,15 +190,30 @@ export default function App() {
           mode: isBinaryMode ? 'binary' : 'single',
           tone: selectedTone,
           userProfile: userProfile ?? undefined,
+          userId: getOrCreateUid(),
+          userKey: userKey || undefined,
         }),
       });
 
       const data = await response.json();
+
+      // 免费额度已用完：弹出付费引导（接入自己的 Key / 充值）
+      if (response.status === 403 && data.code === 'FREE_LIMIT_EXCEEDED') {
+        setQuota(data.quota ?? null);
+        setQuotaExceeded(true);
+        setShowQuotaModal(true);
+        return;
+      }
+
+      // 提取服务端返回的额度信息，其余字段组装为裁决结果（quota 不写入历史）
+      const { quota: serverQuota, ...resultData } = data;
+      if (serverQuota) setQuota(serverQuota);
+
       const completeResult: DecisionResult = {
-        ...data,
+        ...(resultData as Partial<DecisionResult>),
         id: String(Date.now()),
         timestamp: Date.now(),
-      };
+      } as DecisionResult;
 
       setCurrentResult(completeResult);
       saveHistoryItem(completeResult);
@@ -311,6 +375,36 @@ export default function App() {
                     </button>
                   </>
                 )}
+              </div>
+
+              {/* Quota & BYOK Status Strip */}
+              <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-800 bg-slate-950/60 text-[11px]">
+                <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                {userKey ? (
+                  <span className="text-emerald-300 font-medium flex items-center gap-1">
+                    <KeyRound className="w-3 h-3" /> 已接入个人 Key，调用走你自己的账户
+                  </span>
+                ) : quota ? (
+                  <span className="text-slate-400">
+                    免费额度：
+                    <span className={`font-bold ${quota.remaining > 0 ? 'text-amber-300' : 'text-rose-400'}`}>
+                      {quota.remaining}
+                    </span>
+                    {' '}/ {quota.limit} 次剩余
+                    {quota.remaining === 0 && <span className="text-rose-400">（已用完）</span>}
+                  </span>
+                ) : (
+                  <span className="text-slate-500">每次成功推演消耗 1 次免费额度</span>
+                )}
+                <button
+                  onClick={() => {
+                    setQuotaExceeded(false);
+                    setShowQuotaModal(true);
+                  }}
+                  className="ml-auto shrink-0 px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-medium transition-all"
+                >
+                  额度 / 接入 Key
+                </button>
               </div>
 
               {/* Main Dilemma Textarea */}
@@ -584,6 +678,21 @@ export default function App() {
           onSave={handleSaveProfile}
           onClear={handleClearProfile}
           onClose={() => setShowProfileModal(false)}
+        />
+      )}
+
+      {/* Quota / BYOK Modal */}
+      {showQuotaModal && (
+        <QuotaModal
+          quota={quota}
+          userKey={userKey}
+          exceeded={quotaExceeded}
+          onSaveKey={handleSaveUserKey}
+          onClearKey={handleClearUserKey}
+          onClose={() => {
+            setShowQuotaModal(false);
+            setQuotaExceeded(false);
+          }}
         />
       )}
     </div>

@@ -212,3 +212,52 @@ export async function callDeepSeekJson(
   const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   return JSON.parse(cleaned) as Record<string, unknown>;
 }
+
+// ---------------------------------------------------------------------------
+// 免费额度（quota）——纯 TS，内存实现，Express 与 Cloudflare Pages Function 共用
+// 说明：内存计数在服务重启/冷启动后会重置；适合轻量免费额度。生产级可换
+// Cloudflare KV / SQLite / 数据库持久化（本模块接口不变）。
+// ---------------------------------------------------------------------------
+
+export interface QuotaInfo {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+/** 简单的按用户内存计数额度存储 */
+export class MemoryQuotaStore {
+  private counts = new Map<string, number>();
+
+  constructor(private limit: number) {}
+
+  /** 当前额度状态（不消耗） */
+  status(userId: string): QuotaInfo {
+    const used = this.counts.get(userId) || 0;
+    return { used, limit: this.limit, remaining: Math.max(0, this.limit - used) };
+  }
+
+  /** 是否仍可用（不消耗） */
+  canUse(userId: string): boolean {
+    return (this.counts.get(userId) || 0) < this.limit;
+  }
+
+  /** 记录一次成功消耗，返回最新状态 */
+  consume(userId: string): QuotaInfo {
+    const used = (this.counts.get(userId) || 0) + 1;
+    this.counts.set(userId, used);
+    return { used, limit: this.limit, remaining: Math.max(0, this.limit - used) };
+  }
+
+  /** 清空（可按用户） */
+  reset(userId?: string): void {
+    if (userId) this.counts.delete(userId);
+    else this.counts.clear();
+  }
+}
+
+/** 从环境变量解析免费次数上限（默认 3） */
+export function resolveFreeLimit(value?: string | number): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 3;
+}
