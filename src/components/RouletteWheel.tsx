@@ -35,6 +35,9 @@ export const RouletteWheel: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const lastSoundSectorRef = useRef<number>(-1);
 
+  // 轮盘逻辑尺寸（CSS 像素）；实际像素按 devicePixelRatio 放大，保证高分屏清晰
+  const LOGICAL_SIZE = 360;
+
   // Draw the roulette wheel on canvas
   const drawWheel = () => {
     const canvas = canvasRef.current;
@@ -42,8 +45,18 @@ export const RouletteWheel: React.FC = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    // 高分屏自适应：canvas 物理分辨率 = 逻辑尺寸 × DPR（上限 3x，避免超大画布）
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const pixelSize = Math.round(LOGICAL_SIZE * dpr);
+    if (canvas.width !== pixelSize || canvas.height !== pixelSize) {
+      canvas.width = pixelSize;
+      canvas.height = pixelSize;
+    }
+    // 之后所有绘制均以逻辑尺寸（CSS 像素）为坐标系
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const width = LOGICAL_SIZE;
+    const height = LOGICAL_SIZE;
     const centerX = width / 2;
     const centerY = height / 2;
     const radius = Math.min(centerX, centerY) - 15;
@@ -84,9 +97,9 @@ export const RouletteWheel: React.FC = () => {
       ctx.rotate(startAngle + sliceAngle / 2);
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.font = 'bold 14px system-ui, sans-serif';
       ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-      ctx.shadowBlur = 4;
+      ctx.shadowBlur = 3;
       
       const maxTextLen = radius - 30;
       let displayStr = opt.text;
@@ -121,6 +134,10 @@ export const RouletteWheel: React.FC = () => {
 
   useEffect(() => {
     drawWheel();
+    // 窗口尺寸 / 缩放变化（如高分屏切换）时重绘，保持清晰
+    const onResize = () => drawWheel();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, [options]);
 
   const handleAddOption = () => {
@@ -253,8 +270,6 @@ export const RouletteWheel: React.FC = () => {
             >
               <canvas
                 ref={canvasRef}
-                width={360}
-                height={360}
                 className="w-[280px] h-[280px] sm:w-[340px] sm:h-[340px] rounded-full"
               />
             </motion.div>
