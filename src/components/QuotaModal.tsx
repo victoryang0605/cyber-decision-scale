@@ -55,7 +55,6 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
   const [keyInput, setKeyInput] = useState(userKey);
   const [savedTip, setSavedTip] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [qrOk, setQrOk] = useState(true);
   const [selectedPackage, setSelectedPackage] = useState<string>('p10');
   const [phoneInput, setPhoneInput] = useState(session?.phone || '');
   const [phoneMsg, setPhoneMsg] = useState('');
@@ -220,22 +219,16 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
             ))}
           </div>
           <div className="flex gap-3 items-center">
-            {qrOk ? (
-              <img
-                src="/qr-pay.png"
-                alt="收款码"
-                onError={() => setQrOk(false)}
-                className="w-24 h-24 rounded-xl border border-amber-500/30 bg-white object-contain shrink-0"
-              />
-            ) : (
-              <div className="w-24 h-24 rounded-xl border-2 border-dashed border-amber-500/40 flex items-center justify-center text-[10px] text-amber-200/70 text-center px-1 shrink-0">
-                收款码<br />占位
-              </div>
-            )}
+            <img
+              src="/qr-pay.png"
+              alt="收款码"
+              className="w-28 h-28 rounded-xl border border-amber-500/30 bg-white object-contain shrink-0"
+            />
             <div className="text-[11px] text-slate-400 space-y-1.5">
-              <p>1. 扫码支付所选套餐金额</p>
+              <p>1. 微信/支付宝扫码支付所选套餐金额</p>
               <p>2. 复制下方「用户 ID」发给站长确认</p>
-              <p>3. 站长确认后立即到账对应次数</p>
+              <p>3. 站长确认收款后立即到账对应次数</p>
+              <p className="text-[10px] text-amber-300/80">付款后请保留截图，便于对账</p>
             </div>
           </div>
           <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800">
@@ -251,7 +244,7 @@ export const QuotaModal: React.FC<QuotaModalProps> = ({
           </div>
           <p className="text-[10px] text-slate-600">
             游客付款请把「用户 ID」发给站长并<button className="underline" onClick={onOpenAuth}>注册/登录</button>
-            后到账；找不到收款码？站长还没上传（站点 /qr-pay.png），可联系站长线下转账。
+            后，站长确认收款即到账。
           </p>
         </div>
 
